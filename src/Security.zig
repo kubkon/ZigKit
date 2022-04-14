@@ -100,7 +100,7 @@ pub const SecIdentity = opaque {
         return ident;
     }
 
-    pub fn deinit(self: *SecIdentity) void {
+    pub fn release(self: *SecIdentity) void {
         CFRelease(self);
     }
 
