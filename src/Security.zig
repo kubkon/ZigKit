@@ -74,6 +74,137 @@ pub const CMSEncoder = opaque {
     extern "c" fn CMSEncoderCopyEncodedContent(encoder: *CMSEncoder, out: **CFData) c_int;
 };
 
+pub const CMSDecoder = opaque {
+    pub fn create() !*CMSDecoder {
+        var decoder: *CMSDecoder = undefined;
+        if (CMSDecoderCreate(&decoder) != 0) {
+            return error.Failed;
+        }
+        return decoder;
+    }
+
+    pub fn release(self: *CMSDecoder) void {
+        CFRelease(self);
+    }
+
+    pub fn updateMessage(self: *CMSDecoder, msg: []const u8) !void {
+        const res = CMSDecoderUpdateMessage(self, msg.ptr, msg.len);
+        if (res != 0) {
+            return error.Failed;
+        }
+    }
+
+    pub fn setDetachedContent(self: *CMSDecoder, bytes: []const u8) !void {
+        const dref = CFData.create(bytes);
+        defer dref.release();
+
+        if (CMSDecoderSetDetachedContent(self, dref) != 0) {
+            return error.Failed;
+        }
+    }
+
+    pub fn finalizeMessage(self: *CMSDecoder) !void {
+        if (CMSDecoderFinalizeMessage(self) != 0) {
+            return error.Failed;
+        }
+    }
+
+    pub fn getNumSigners(self: *CMSDecoder) !usize {
+        var out: usize = undefined;
+        if (CMSDecoderGetNumSigners(self, &out) != 0) {
+            return error.Failed;
+        }
+        return out;
+    }
+
+    pub fn signerEmailAddress(self: *CMSDecoder, allocator: Allocator, index: usize) ![]const u8 {
+        var ref: ?*CFString = null;
+        if (ref) |r| r.release();
+        const res = CMSDecoderCopySignerEmailAddress(self, index, &ref);
+        if (res != 0) {
+            return error.Failed;
+        }
+        return ref.?.cstr(allocator);
+    }
+
+    pub fn copyDetachedContent(self: *CMSDecoder) !?*CFData {
+        var out: ?*CFData = null;
+        const res = CMSDecoderCopyDetachedContent(self, &out);
+        if (res != 0) {
+            return error.Failed;
+        }
+        return out;
+    }
+
+    pub fn copyContent(self: *CMSDecoder) !?*CFData {
+        var out: ?*CFData = null;
+        const res = CMSDecoderCopyContent(self, &out);
+        if (res != 0) {
+            return error.Failed;
+        }
+        return out;
+    }
+
+    pub fn getSignerStatus(self: *CMSDecoder, index: usize) !CMSSignerStatus {
+        const policy = SecPolicy.createiPhoneProfileApplicationSigning();
+        defer policy.release();
+
+        var status: CMSSignerStatus = undefined;
+        if (CMSDecoderCopySignerStatus(self, index, policy, false, &status, null, null) != 0) {
+            return error.Failed;
+        }
+        return status;
+    }
+
+    extern "c" fn CMSDecoderCreate(**CMSDecoder) c_int;
+    extern "c" fn CMSDecoderSetDetachedContent(decoder: *CMSDecoder, detached_content: *CFData) c_int;
+    extern "c" fn CMSDecoderUpdateMessage(
+        decoder: *CMSDecoder,
+        msg_bytes: *const anyopaque,
+        msg_len: usize,
+    ) c_int;
+    extern "c" fn CMSDecoderFinalizeMessage(decoder: *CMSDecoder) c_int;
+    extern "c" fn CMSDecoderGetNumSigners(decoder: *CMSDecoder, out: *usize) c_int;
+    extern "c" fn CMSDecoderCopyDetachedContent(decoder: *CMSDecoder, out: *?*CFData) c_int;
+    extern "c" fn CMSDecoderCopyContent(decoder: *CMSDecoder, out: *?*CFData) c_int;
+    extern "c" fn CMSDecoderCopySignerEmailAddress(
+        decoder: *CMSDecoder,
+        index: usize,
+        out: *?*CFString,
+    ) c_int;
+    extern "c" fn CMSDecoderCopySignerStatus(
+        decoder: *CMSDecoder,
+        index: usize,
+        policy_or_array: *const anyopaque,
+        eval_sec_trust: bool,
+        out_status: *CMSSignerStatus,
+        out_trust: ?*anyopaque,
+        out_cert_verify_code: ?*c_int,
+    ) c_int;
+};
+
+pub const SecPolicy = opaque {
+    pub fn createiPhoneApplicationSigning() *SecPolicy {
+        return SecPolicyCreateiPhoneApplicationSigning();
+    }
+
+    pub fn createiPhoneProfileApplicationSigning() *SecPolicy {
+        return SecPolicyCreateiPhoneProfileApplicationSigning();
+    }
+
+    pub fn createMacOSProfileApplicationSigning() *SecPolicy {
+        return SecPolicyCreateMacOSProfileApplicationSigning();
+    }
+
+    pub fn release(self: *SecPolicy) void {
+        CFRelease(self);
+    }
+
+    extern "c" fn SecPolicyCreateiPhoneApplicationSigning() *SecPolicy;
+    extern "c" fn SecPolicyCreateiPhoneProfileApplicationSigning() *SecPolicy;
+    extern "c" fn SecPolicyCreateMacOSProfileApplicationSigning() *SecPolicy;
+};
+
 pub const SecCertificate = opaque {
     pub fn initWithData(bytes: []const u8) !*SecCertificate {
         const data = CFData.create(bytes);
@@ -123,9 +254,20 @@ pub const CertificateChainMode = enum(u32) {
     chain_with_root_or_fail,
 };
 
+pub const CMSSignerStatus = enum(u32) {
+    unsigned = 0,
+    valid,
+    needs_detached_content,
+    invalid_signature,
+    invalid_cert,
+    invalid_index,
+};
+
 test {
     _ = testing.refAllDecls(@This());
     _ = testing.refAllDecls(CMSEncoder);
+    _ = testing.refAllDecls(CMSDecoder);
     _ = testing.refAllDecls(SecCertificate);
     _ = testing.refAllDecls(SecIdentity);
+    _ = testing.refAllDecls(SecPolicy);
 }
