@@ -19,6 +19,7 @@ pub const CFOptionFlags = c_long;
 pub const CFTypeID = c_ulong;
 pub const CFTimeInterval = f64; // c_double
 pub const CFAbsoluteTime = CFTimeInterval;
+pub const Boolean = bool;
 pub const CFComparisonResult = enum(CFIndex) {
     kCFCompareLessThan = -1,
     kCFCompareEqualTo = 0,
@@ -146,6 +147,36 @@ pub const CFAllocator = opaque {
     };
 };
 
+/// Wraps the CFArrayRef type
+pub const CFArray = opaque {
+    extern "C" fn CFArrayCreate(allocator: ?*CFAllocator, values: [*]?*anyopaque, num_values: CFIndex, call_backs: ?*CFArrayCallBacks) ?*CFArray;
+
+    pub const CFArrayRetainCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) *anyopaque;
+    pub const CFArrayReleaseCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) void;
+    pub const CFArrayCopyDescriptionCallBack = fn (*const anyopaque) callconv(.C) *CFString;
+    pub const CFArrayEqualCallBack = fn (*const anyopaque, *const anyopaque) callconv(.C) Boolean;
+
+    pub const CFArrayCallBacks = extern struct {
+        version: CFIndex,
+        retain: switch (builtin.zig_backend) {
+            .stage1 => ?CFArrayRetainCallBack,
+            else => ?*const CFArrayRetainCallBack,
+        },
+        release: switch (builtin.zig_backend) {
+            .stage1 => ?CFArrayReleaseCallBack,
+            else => ?*const CFArrayReleaseCallBack,
+        },
+        copy_description: switch (builtin.zig_backend) {
+            .stage1 => ?CFArrayCopyDescriptionCallBack,
+            else => ?*const CFArrayCopyDescriptionCallBack,
+        },
+        equal: switch (builtin.zig_backend) {
+            .stage1 => ?CFArrayEqualCallBack,
+            else => ?*const CFArrayEqualCallBack,
+        },
+    };
+};
+
 /// Wraps CFDataRef type.
 pub const CFData = opaque {
     pub fn create(bytes: []const u8) *CFData {
@@ -229,6 +260,8 @@ test {
     _ = testing.refAllDecls(ZigAllocatorCallbacks);
     _ = testing.refAllDecls(CFAllocator);
     _ = testing.refAllDecls(CFAllocator.CFAllocatorContext);
+    _ = testing.refAllDecls(CFArray);
+    _ = testing.refAllDecls(CFArray.CFArrayCallBacks);
     _ = testing.refAllDecls(CFData);
     _ = testing.refAllDecls(CFDate);
     _ = testing.refAllDecls(CFString);
