@@ -26,6 +26,13 @@ pub const CFComparisonResult = enum(CFIndex) {
     kCFCompareGreaterThan = 1,
 };
 
+pub const CFRange = extern struct {
+    location: CFIndex,
+    length: CFIndex,
+};
+
+pub const CFComparatorFunction = fn (*const anyopaque, *const anyopaque, *anyopaque) callconv(.C) CFComparisonResult;
+
 // A struct to help manage how the allocator callbacks wrap a zig allocator.
 // Also used as the underlying type pointed to by the context struct we initialise
 // to wrap zig allocators using CFAllocator.
@@ -149,7 +156,14 @@ pub const CFAllocator = opaque {
 
 /// Wraps the CFArrayRef type
 pub const CFArray = opaque {
+    const comparator_ptr = switch (builtin.zig_backend) {
+        .stage1 => ?CFComparatorFunction,
+        else => ?*const CFComparatorFunction,
+    };
+
     extern "C" fn CFArrayCreate(allocator: ?*CFAllocator, values: [*]?*anyopaque, num_values: CFIndex, call_backs: ?*CFArrayCallBacks) ?*CFArray;
+    extern "C" fn CFArrayCreateCopy(allocator: ?*CFAllocator, the_array: *CFArray) ?*CFArray;
+    extern "C" fn CFArrayBSearchValues(the_array: *CFArray, range: CFRange, value: *const anyopaque, comparator: comparator_ptr, context: ?*anyopaque) CFIndex;
 
     pub const CFArrayRetainCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) *anyopaque;
     pub const CFArrayReleaseCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) void;
