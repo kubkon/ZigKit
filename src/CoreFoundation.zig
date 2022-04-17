@@ -88,7 +88,11 @@ pub const CFAllocator = opaque {
             .release = null,
         };
 
-        return CFAllocatorCreate(allocator_allocator, &allocator_context).?;
+        if (CFAllocatorCreate(allocator_allocator, &allocator_context)) |cf_allocator| {
+            return cf_allocator;
+        } else {
+            return error.OutOfMemory;
+        }
     }
 
     extern "C" const kCFAllocatorDefault: ?*CFAllocator;
