@@ -156,14 +156,32 @@ pub const CFAllocator = opaque {
 
 /// Wraps the CFArrayRef type
 pub const CFArray = opaque {
-    extern "C" fn CFArrayCreate(allocator: ?*CFAllocator, values: [*]?*anyopaque, num_values: CFIndex, call_backs: ?*CFArrayCallBacks) ?*CFArray;
-    extern "C" fn CFArrayCreateCopy(allocator: ?*CFAllocator, the_array: *CFArray) ?*CFArray;
-    extern "C" fn CFArrayBSearchValues(the_array: *CFArray, range: CFRange, value: *const anyopaque, comparator: ?getFunctionPointer(CFComparatorFunction), context: ?*anyopaque) CFIndex;
+    // An alias to make opaque array value types a bit less confusing.
+    pub const OpaqueArrayValueType = ?*const anyopaque;
+    pub fn create(allocator: ?*CFAllocator, values: []const OpaqueArrayValueType, call_backs: ?*CFArrayCallBacks) !*CFArray {
+        if (CFArrayCreate(allocator, values.ptr, @intCast(CFIndex, values.len), call_backs)) |cfarray| {
+            return cfarray;
+        } else {
+            return error.OutOfMemory;
+        }
+    }
 
-    pub const CFArrayRetainCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) *anyopaque;
-    pub const CFArrayReleaseCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) void;
-    pub const CFArrayCopyDescriptionCallBack = fn (*const anyopaque) callconv(.C) *CFString;
-    pub const CFArrayEqualCallBack = fn (*const anyopaque, *const anyopaque) callconv(.C) Boolean;
+    extern "C" fn CFArrayCreate(allocator: ?*CFAllocator, values: [*]const OpaqueArrayValueType, num_values: CFIndex, call_backs: ?*CFArrayCallBacks) ?*CFArray;
+    extern "C" fn CFArrayCreateCopy(allocator: ?*CFAllocator, the_array: *CFArray) ?*CFArray;
+
+    extern "C" fn CFArrayBSearchValues(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType, comparator: ?getFunctionPointer(CFComparatorFunction), context: ?*anyopaque) CFIndex;
+    extern "C" fn CFArrayContainsValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) Boolean;
+    extern "C" fn CFArrayGetCount(the_array: *CFArray) CFIndex;
+    extern "C" fn CFArrayGetCountOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
+    extern "C" fn CFArrayGetFirstIndexOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
+    extern "C" fn CFArrayGetLastIndexOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
+    extern "C" fn CFArrayGetValues(the_array: *CFArray, range: CFRange, values: [*]OpaqueArrayValueType) void;
+    extern "C" fn CFArrayGetValueAtIndex(the_array: *CFArray, index: CFIndex) OpaqueArrayValueType;
+
+    pub const CFArrayRetainCallBack = fn (*CFAllocator, OpaqueArrayValueType) callconv(.C) OpaqueArrayValueType;
+    pub const CFArrayReleaseCallBack = fn (*CFAllocator, OpaqueArrayValueType) callconv(.C) void;
+    pub const CFArrayCopyDescriptionCallBack = fn (OpaqueArrayValueType) callconv(.C) *CFString;
+    pub const CFArrayEqualCallBack = fn (OpaqueArrayValueType, OpaqueArrayValueType) callconv(.C) Boolean;
 
     pub const CFArrayCallBacks = extern struct {
         version: CFIndex,
@@ -262,4 +280,22 @@ test {
     _ = testing.refAllDecls(CFData);
     _ = testing.refAllDecls(CFDate);
     _ = testing.refAllDecls(CFString);
+}
+
+test "Basic Array Tests" {
+    const allocator = testing.allocator;
+    const cfallocator = try CFAllocator.createFromZigAllocator(&allocator, CFAllocator.kCFAllocatorUseContext);
+    defer CFRelease(cfallocator);
+
+    const array = try CFArray.create(cfallocator, &[_]CFArray.OpaqueArrayValueType{ null, @intToPtr(CFArray.OpaqueArrayValueType, 2), null }, null);
+    defer CFRelease(array);
+
+    try testing.expectEqual(array.CFArrayGetCount(), 3);
+    try testing.expectEqual(array.CFArrayGetCountOfValue(.{ .location = 0, .length = 3 }, null), 2);
+    try testing.expectEqual(array.CFArrayGetValueAtIndex(0), null);
+    try testing.expectEqual(array.CFArrayGetValueAtIndex(1), @intToPtr(CFArray.OpaqueArrayValueType, 2));
+    try testing.expectEqual(array.CFArrayGetValueAtIndex(2), null);
+    try testing.expectEqual(array.CFArrayGetFirstIndexOfValue(.{ .location = 0, .length = 3 }, null), 0);
+    try testing.expectEqual(array.CFArrayGetLastIndexOfValue(.{ .location = 0, .length = 3 }, null), 2);
+    try testing.expectEqual(array.CFArrayGetFirstIndexOfValue(.{ .location = 0, .length = 3 }, @intToPtr(CFArray.OpaqueArrayValueType, 1)), -1);
 }
