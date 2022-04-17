@@ -156,14 +156,9 @@ pub const CFAllocator = opaque {
 
 /// Wraps the CFArrayRef type
 pub const CFArray = opaque {
-    const comparator_ptr = switch (builtin.zig_backend) {
-        .stage1 => ?CFComparatorFunction,
-        else => ?*const CFComparatorFunction,
-    };
-
     extern "C" fn CFArrayCreate(allocator: ?*CFAllocator, values: [*]?*anyopaque, num_values: CFIndex, call_backs: ?*CFArrayCallBacks) ?*CFArray;
     extern "C" fn CFArrayCreateCopy(allocator: ?*CFAllocator, the_array: *CFArray) ?*CFArray;
-    extern "C" fn CFArrayBSearchValues(the_array: *CFArray, range: CFRange, value: *const anyopaque, comparator: comparator_ptr, context: ?*anyopaque) CFIndex;
+    extern "C" fn CFArrayBSearchValues(the_array: *CFArray, range: CFRange, value: *const anyopaque, comparator: ?getFunctionPointer(CFComparatorFunction), context: ?*anyopaque) CFIndex;
 
     pub const CFArrayRetainCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) *anyopaque;
     pub const CFArrayReleaseCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) void;
@@ -172,22 +167,10 @@ pub const CFArray = opaque {
 
     pub const CFArrayCallBacks = extern struct {
         version: CFIndex,
-        retain: switch (builtin.zig_backend) {
-            .stage1 => ?CFArrayRetainCallBack,
-            else => ?*const CFArrayRetainCallBack,
-        },
-        release: switch (builtin.zig_backend) {
-            .stage1 => ?CFArrayReleaseCallBack,
-            else => ?*const CFArrayReleaseCallBack,
-        },
-        copy_description: switch (builtin.zig_backend) {
-            .stage1 => ?CFArrayCopyDescriptionCallBack,
-            else => ?*const CFArrayCopyDescriptionCallBack,
-        },
-        equal: switch (builtin.zig_backend) {
-            .stage1 => ?CFArrayEqualCallBack,
-            else => ?*const CFArrayEqualCallBack,
-        },
+        retain: ?getFunctionPointer(CFArrayRetainCallBack),
+        release: ?getFunctionPointer(CFArrayReleaseCallBack),
+        copy_description: ?getFunctionPointer(CFArrayCopyDescriptionCallBack),
+        equal: ?getFunctionPointer(CFArrayEqualCallBack),
     };
 };
 
