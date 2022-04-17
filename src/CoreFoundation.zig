@@ -5,6 +5,14 @@ const testing = std.testing;
 
 const Allocator = mem.Allocator;
 
+// A workaround until stage 2 is shipped
+fn getFunctionPointer(comptime function_type: type) type {
+    return switch (builtin.zig_backend) {
+        .stage1 => function_type,
+        else => *const function_type,
+    };
+}
+
 // Basic types
 pub const CFIndex = c_long;
 pub const CFOptionFlags = c_long;
@@ -128,34 +136,13 @@ pub const CFAllocator = opaque {
     pub const CFAllocatorContext = extern struct {
         version: CFIndex,
         info: ?*anyopaque,
-        retain: switch (builtin.zig_backend) {
-            .stage1 => ?CFAllocatorRetainCallBack,
-            else => ?*const CFAllocatorRetainCallBack,
-        },
-        release: switch (builtin.zig_backend) {
-            .stage1 => ?CFAllocatorReleaseCallBack,
-            else => ?*const CFAllocatorReleaseCallBack,
-        },
-        copyDescription: switch (builtin.zig_backend) {
-            .stage1 => ?CFAllocatorCopyDescriptionCallBack,
-            else => ?*const CFAllocatorCopyDescriptionCallBack,
-        },
-        allocate: switch (builtin.zig_backend) {
-            .stage1 => CFAllocatorAllocateCallBack,
-            else => *const CFAllocatorAllocateCallBack,
-        },
-        reallocate: switch (builtin.zig_backend) {
-            .stage1 => CFAllocatorReallocateCallBack,
-            else => *const CFAllocatorReallocateCallBack,
-        },
-        deallocate: switch (builtin.zig_backend) {
-            .stage1 => ?CFAllocatorDeallocateCallback,
-            else => ?*const CFAllocatorDeallocateCallback,
-        },
-        preferredSize: switch (builtin.zig_backend) {
-            .stage1 => ?CFAllocatorPreferredSizeCallBack,
-            else => ?*const CFAllocatorPreferredSizeCallBack,
-        },
+        retain: ?getFunctionPointer(CFAllocatorRetainCallBack),
+        release: ?getFunctionPointer(CFAllocatorReleaseCallBack),
+        copyDescription: ?getFunctionPointer(CFAllocatorCopyDescriptionCallBack),
+        allocate: getFunctionPointer(CFAllocatorAllocateCallBack),
+        reallocate: getFunctionPointer(CFAllocatorReallocateCallBack),
+        deallocate: ?getFunctionPointer(CFAllocatorDeallocateCallback),
+        preferredSize: ?getFunctionPointer(CFAllocatorPreferredSizeCallBack),
     };
 };
 
