@@ -269,7 +269,7 @@ pub const CFString = opaque {
 
 /// Wraps CFDictionaryRef type.
 pub const CFDictionary = opaque {
-    pub fn create(keys: []*const anyopaque, values: []*const anyopaque) *CFDictionary {
+    pub fn create(comptime Key: type, comptime Value: type, keys: []*Key, values: []*Value) *CFDictionary {
         assert(keys.len == values.len);
         return CFDictionaryCreate(
             null,
@@ -285,9 +285,8 @@ pub const CFDictionary = opaque {
         CFRelease(self);
     }
 
-    /// TODO could we involve type ducktyping here?
-    pub fn getValue(self: *CFDictionary, key: *anyopaque) ?*anyopaque {
-        return CFDictionaryGetValue(self, key);
+    pub fn getValue(self: *CFDictionary, comptime Key: type, key: *Key) ?*anyopaque {
+        return CFDictionaryGetValue(self, @ptrCast(*const anyopaque, key));
     }
 
     extern "c" fn CFDictionaryCreate(

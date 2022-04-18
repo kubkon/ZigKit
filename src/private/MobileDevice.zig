@@ -104,7 +104,7 @@ pub const AMDevice = extern struct {
 
         const keys = &[_]*CFString{CFString.createWithBytes("PackageType")};
         const values = &[_]*CFString{CFString.createWithBytes("Developer")};
-        const opts = CFDictionary.create(keys, values);
+        const opts = CFDictionary.create(CFString, CFString, keys, values);
         defer {
             for (keys) |key| {
                 key.release();
