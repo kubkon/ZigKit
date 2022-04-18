@@ -208,7 +208,7 @@ pub const IntefaceType = enum(isize) {
     _,
 };
 
-const AMDeviceNotification = extern struct {
+pub const AMDeviceNotification = extern struct {
     _0: u32,
     _1: u32,
     _2: u32,
