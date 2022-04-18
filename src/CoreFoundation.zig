@@ -285,8 +285,9 @@ pub const CFDictionary = opaque {
         CFRelease(self);
     }
 
-    pub fn getValue(self: *CFDictionary, comptime Key: type, key: *Key) ?*anyopaque {
-        return CFDictionaryGetValue(self, @ptrCast(*const anyopaque, key));
+    pub fn getValue(self: *CFDictionary, comptime Key: type, comptime Value: type, key: *Key) ?*Value {
+        const ptr = CFDictionaryGetValue(self, @ptrCast(*anyopaque, key)) orelse return null;
+        return @ptrCast(*Value, ptr);
     }
 
     extern "c" fn CFDictionaryCreate(

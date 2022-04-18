@@ -54,7 +54,7 @@ pub const AMDevice = extern struct {
         const key = CFString.createWithBytes("DeviceName");
         defer key.release();
         const cfstr = AMDeviceCopyValue(self, null, key);
-        defer cfstr.deinit();
+        defer cfstr.release();
         return cfstr.cstr(allocator);
     }
 
@@ -69,7 +69,7 @@ pub const AMDevice = extern struct {
     }
 
     pub fn secureInstallApplication(self: *AMDevice, url: *CFUrl, opts: *CFDictionary, cb: Callback) !void {
-        if (AMDeviceSecureInstallApplication(0, self, url, opts, cb, 0)) {
+        if (AMDeviceSecureInstallApplication(0, self, url, opts, cb, 0) != 0) {
             return error.Failed;
         }
     }
@@ -95,12 +95,12 @@ pub const AMDevice = extern struct {
     pub fn installBundle(
         self: *AMDevice,
         bundle_path: []const u8,
+        transfer_cb: Callback,
+        install_cb: Callback,
     ) !void {
-        const path = CFString.createWithBytes(bundle_path);
-        defer path.release();
-        const rel_url = CFUrl.createWithPath(path, false);
+        const rel_url = CFUrl.createWithPath(bundle_path, false);
         defer rel_url.release();
-        const url = rel_url.copyAbsoluteURL();
+        const url = rel_url.copyAbsoluteUrl();
         defer url.release();
 
         const keys = &[_]*CFString{CFString.createWithBytes("PackageType")};
@@ -116,7 +116,7 @@ pub const AMDevice = extern struct {
             opts.release();
         }
 
-        try self.secureTransferPath(url, opts);
+        try self.secureTransferPath(url, opts, transfer_cb);
 
         try self.connect();
         defer self.disconnect() catch {};
@@ -127,7 +127,7 @@ pub const AMDevice = extern struct {
         try self.startSession();
         defer self.stopSession() catch {};
 
-        try self.secureInstallApplication(url, opts);
+        try self.secureInstallApplication(url, opts, install_cb);
     }
 
     // pub fn copyDeviceAppUrl(self: *AMDevice, bundle_id: *CFString) !?*CFUrl {
