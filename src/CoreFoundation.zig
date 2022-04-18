@@ -35,7 +35,7 @@ const ZigAllocatorCallbacks = struct {
         _ = hint; // hint is always unused
         const allocator = opaqueInfoToAllocator(opaque_info);
         const actual_alloc_size = @sizeOf(usize) + @intCast(usize, alloc_size);
-        const bytes = allocator.alloc(u8, actual_alloc_size) catch {
+        const bytes = allocator.alignedAlloc(u8, @alignOf(usize), actual_alloc_size) catch {
             return null;
         };
         return rootSliceToData(bytes);
