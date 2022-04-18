@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const assert = std.debug.assert;
 const mem = std.mem;
 const testing = std.testing;
 
@@ -266,6 +267,99 @@ pub const CFString = opaque {
     extern "c" fn CFStringGetCString(str: *CFString, buffer: [*]u8, size: usize, encoding: u32) bool;
 };
 
+/// Wraps CFDictionaryRef type.
+pub const CFDictionary = opaque {
+    pub fn create(keys: []*const anyopaque, values: []*const anyopaque) *CFDictionary {
+        assert(keys.len == values.len);
+        return CFDictionaryCreate(
+            null,
+            @ptrCast([*]*const anyopaque, keys),
+            @ptrCast([*]*const anyopaque, values),
+            keys.len,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks,
+        );
+    }
+
+    pub fn release(self: *CFDictionary) void {
+        CFRelease(self);
+    }
+
+    /// TODO could we involve type ducktyping here?
+    pub fn getValue(self: *CFDictionary, key: *anyopaque) ?*anyopaque {
+        return CFDictionaryGetValue(self, key);
+    }
+
+    extern "c" fn CFDictionaryCreate(
+        allocator: ?*anyopaque,
+        keys: [*]*const anyopaque,
+        values: [*]*const anyopaque,
+        num_values: usize,
+        key_cb: *const anyopaque,
+        value_cb: *const anyopaque,
+    ) *CFDictionary;
+    extern "c" fn CFDictionaryGetValue(dict: *CFDictionary, key: *anyopaque) ?*anyopaque;
+
+    extern "c" var kCFTypeDictionaryKeyCallBacks: anyopaque;
+    extern "c" var kCFTypeDictionaryValueCallBacks: anyopaque;
+};
+
+/// Wraps CFBooleanRef type.
+pub const CFBoolean = opaque {
+    pub fn @"true"() *CFBoolean {
+        return kCFBooleanTrue;
+    }
+
+    pub fn @"false"() *CFBoolean {
+        return kCFBooleanFalse;
+    }
+
+    pub fn release(self: *CFBoolean) void {
+        CFRelease(self);
+    }
+
+    extern "c" var kCFBooleanTrue: *CFBoolean;
+    extern "c" var kCFBooleanFalse: *CFBoolean;
+};
+
+/// Wraps CFUrl type.
+pub const CFUrl = opaque {
+    pub fn createWithPath(path: []const u8, is_dir: bool) *CFUrl {
+        const cpath = CFString.createWithBytes(path);
+        defer cpath.release();
+        return CFURLCreateWithFileSystemPath(null, cpath, .posix, is_dir);
+    }
+
+    pub fn copyAbsoluteUrl(self: *CFUrl) *CFUrl {
+        return CFURLCopyAbsoluteURL(self);
+    }
+
+    pub fn copyPath(self: *CFUrl, allocator: Allocator) ![]const u8 {
+        const cpath = CFURLCopyFileSystemPath(self, .posix);
+        defer cpath.release();
+        return cpath.cstr(allocator);
+    }
+
+    pub fn release(self: *CFUrl) void {
+        CFRelease(self);
+    }
+
+    extern "c" fn CFURLCreateWithFileSystemPath(
+        ?*anyopaque,
+        path: *CFString,
+        path_style: PathStyle,
+        is_dir: bool,
+    ) *CFUrl;
+    extern "c" fn CFURLCopyAbsoluteURL(*CFUrl) *CFUrl;
+    extern "c" fn CFURLCopyFileSystemPath(*CFUrl, PathStyle) *CFString;
+};
+
+pub const PathStyle = enum(usize) {
+    posix = 0,
+    hfs,
+    windows,
+};
+
 pub const UTF8_ENCODING: u32 = 0x8000100;
 
 pub extern "c" fn CFRelease(*anyopaque) void;
@@ -280,4 +374,7 @@ test {
     _ = testing.refAllDecls(CFData);
     _ = testing.refAllDecls(CFDate);
     _ = testing.refAllDecls(CFString);
+    _ = testing.refAllDecls(CFDictionary);
+    _ = testing.refAllDecls(CFBoolean);
+    _ = testing.refAllDecls(CFUrl);
 }
