@@ -221,8 +221,8 @@ pub const AMDeviceNotificationCallback = fn (
     ?*anyopaque,
 ) callconv(.C) void;
 
-pub fn subscribe(cb: AMDeviceNotificationCallback, notification: *AMDeviceNotification, opts: *CFDictionary) !void {
-    if (AMDeviceNotificationSubscribeWithOptions(cb, 0, 0, null, &notification, opts) != 0) {
+pub fn subscribe(cb: AMDeviceNotificationCallback, notification: **AMDeviceNotification, opts: *CFDictionary) !void {
+    if (AMDeviceNotificationSubscribeWithOptions(cb, 0, 0, null, notification, opts) != 0) {
         return error.Failed;
     }
 }
