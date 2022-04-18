@@ -233,24 +233,3 @@ test {
     _ = testing.refAllDecls(CFDate);
     _ = testing.refAllDecls(CFString);
 }
-
-test "Basic Date Tests" {
-    const allocator = testing.allocator;
-    const cfallocator = try CFAllocator.createFromZigAllocator(&allocator, CFAllocator.kCFAllocatorUseContext);
-    defer CFRelease(cfallocator);
-
-    const early_date = CFDate.CFDateCreate(cfallocator, 0).?;
-    defer CFRelease(early_date);
-    const late_date = CFDate.CFDateCreate(cfallocator, 1200).?;
-    defer CFRelease(late_date);
-
-    try testing.expectEqual(early_date.CFDateCompare(late_date, null), .kCFCompareLessThan);
-    try testing.expectEqual(late_date.CFDateCompare(early_date, null), .kCFCompareGreaterThan);
-    try testing.expectEqual(early_date.CFDateCompare(early_date, null), .kCFCompareEqualTo);
-
-    try testing.expectEqual(early_date.CFDateGetAbsoluteTime(), 0);
-    try testing.expectEqual(late_date.CFDateGetAbsoluteTime(), 1200);
-
-    try testing.expectEqual(early_date.CFDateGetTimeIntervalSinceDate(late_date), -1200);
-    try testing.expectEqual(late_date.CFDateGetTimeIntervalSinceDate(early_date), 1200);
-}
