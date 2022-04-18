@@ -1,8 +1,150 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const mem = std.mem;
 const testing = std.testing;
 
 const Allocator = mem.Allocator;
+
+// A workaround until stage 2 is shipped
+fn getFunctionPointer(comptime function_type: type) type {
+    return switch (builtin.zig_backend) {
+        .stage1 => function_type,
+        else => *const function_type,
+    };
+}
+
+// Basic types
+pub const CFIndex = c_long;
+pub const CFOptionFlags = c_long;
+pub const CFTypeID = c_ulong;
+pub const CFTimeInterval = f64; // c_double
+pub const CFAbsoluteTime = CFTimeInterval;
+pub const CFComparisonResult = enum(CFIndex) {
+    kCFCompareLessThan = -1,
+    kCFCompareEqualTo = 0,
+    kCFCompareGreaterThan = 1,
+};
+
+// A struct to help manage how the allocator callbacks wrap a zig allocator.
+// Also used as the underlying type pointed to by the context struct we initialise
+// to wrap zig allocators using CFAllocator.
+// Because zig allocators work with slices - we have to allocate a little bit of
+// extra memory than we normally would to recreate slice lengths.
+const ZigAllocatorCallbacks = struct {
+    pub fn allocateCallback(alloc_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.C) ?*anyopaque {
+        _ = hint; // hint is always unused
+        const allocator = opaqueInfoToAllocator(opaque_info);
+        const actual_alloc_size = @sizeOf(usize) + @intCast(usize, alloc_size);
+        const bytes = allocator.alignedAlloc(u8, @alignOf(usize), actual_alloc_size) catch {
+            return null;
+        };
+        return rootSliceToData(bytes);
+    }
+
+    pub fn deallocateCallback(data: *anyopaque, opaque_info: ?*anyopaque) callconv(.C) void {
+        const allocator = opaqueInfoToAllocator(opaque_info);
+        allocator.free(dataToRootSlice(data));
+    }
+
+    pub fn reallocateCallback(old_data: *anyopaque, new_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.C) ?*anyopaque {
+        _ = hint; // hint is always unused
+        const allocator = opaqueInfoToAllocator(opaque_info);
+        const actual_new_size = @sizeOf(usize) + @intCast(usize, new_size);
+        const new_data = allocator.realloc(dataToRootSlice(old_data), actual_new_size) catch {
+            return null;
+        };
+        return rootSliceToData(new_data);
+    }
+
+    fn opaqueInfoToAllocator(opaque_info: ?*anyopaque) *const Allocator {
+        return @ptrCast(*const Allocator, @alignCast(@alignOf(Allocator), opaque_info.?));
+    }
+
+    fn dataToRootSlice(data: *anyopaque) []u8 {
+        const data_root = @ptrCast([*]u8, data) - @sizeOf(usize);
+        const length = mem.bytesToValue(usize, data_root[0..@sizeOf(usize)]);
+        return data_root[0..length];
+    }
+
+    fn rootSliceToData(root_slice: []u8) *anyopaque {
+        mem.bytesAsValue(usize, root_slice[0..@sizeOf(usize)]).* = root_slice.len;
+        return @ptrCast(*anyopaque, root_slice[@sizeOf(usize)..]);
+    }
+};
+
+/// Wraps the CFAllocatorRef type.
+pub const CFAllocator = opaque {
+
+    /// Construct a CFAllocator from a zig allocator, the second allocator argument can optionally be
+    /// if you want to allocator the data used to manager the allocator itself using a different
+    /// allocator.
+    ///
+    /// It is recommended that you construct a CFAllocator from a zig allocator once up-front & re-use it
+    /// as allocations are needed to construct an allocator...
+    ///
+    /// The allocator pointed to must be valid for the lifetime of the CFAllocator.
+    pub fn createFromZigAllocator(allocator: *const Allocator, allocator_allocator: ?*CFAllocator) !*CFAllocator {
+        var allocator_context = CFAllocatorContext{
+            .version = 0, // the ony valid value
+            .info = @intToPtr(*anyopaque, @ptrToInt(allocator)),
+            .allocate = ZigAllocatorCallbacks.allocateCallback,
+            .deallocate = ZigAllocatorCallbacks.deallocateCallback,
+            .reallocate = ZigAllocatorCallbacks.reallocateCallback,
+            .preferredSize = null,
+            .copyDescription = null,
+            .retain = null,
+            .release = null,
+        };
+
+        if (CFAllocatorCreate(allocator_allocator, &allocator_context)) |cf_allocator| {
+            return cf_allocator;
+        } else {
+            return error.OutOfMemory;
+        }
+    }
+
+    extern "C" const kCFAllocatorDefault: ?*CFAllocator;
+    extern "C" const kCFAllocatorMalloc: *CFAllocator;
+    extern "C" const kCFAllocatorMallocZone: *CFAllocator;
+    extern "C" const kCFAllocatorSystemDefault: *CFAllocator;
+    extern "C" const kCFAllocatorNull: *CFAllocator;
+    extern "C" const kCFAllocatorUseContext: *CFAllocator;
+
+    extern "c" fn CFAllocatorCreate(allocator: ?*CFAllocator, context: *CFAllocatorContext) ?*CFAllocator;
+
+    extern "C" fn CFAllocatorAllocate(allocator: ?*CFAllocator, size: CFIndex, hint: CFOptionFlags) ?*anyopaque;
+    extern "C" fn CFAllocatorDeallocate(allocator: ?*CFAllocator, ptr: *anyopaque) void;
+    extern "C" fn CFAllocatorGetPreferredSizeForSize(allocator: ?*CFAllocator, size: CFIndex, hint: CFOptionFlags) CFIndex;
+    extern "C" fn CFAllocatorReallocate(allocator: ?*CFAllocator, ptr: ?*anyopaque, newsize: CFIndex, hint: CFOptionFlags) ?*anyopaque;
+
+    extern "C" fn CFAllocatorGetDefault() *CFAllocator;
+    extern "C" fn CFAllocatorSetDefault(allocator: *CFAllocator) void;
+
+    extern "c" fn CFAllocatorGetContext(allocator: ?*CFAllocator, out_context: *CFAllocatorContext) void;
+
+    extern "C" fn CFAllocatorGetTypeID() CFTypeID;
+
+    pub const CFAllocatorAllocateCallBack = fn (CFIndex, CFOptionFlags, ?*anyopaque) callconv(.C) ?*anyopaque;
+    pub const CFAllocatorCopyDescriptionCallBack = fn (?*anyopaque) callconv(.C) *CFString;
+    pub const CFAllocatorDeallocateCallback = fn (*anyopaque, ?*anyopaque) callconv(.C) void;
+    pub const CFAllocatorPreferredSizeCallBack = fn (CFIndex, CFOptionFlags, ?*anyopaque) callconv(.C) CFIndex;
+    pub const CFAllocatorReallocateCallBack = fn (*anyopaque, CFIndex, CFOptionFlags, ?*anyopaque) callconv(.C) ?*anyopaque;
+    pub const CFAllocatorReleaseCallBack = fn (?*anyopaque) callconv(.C) *anyopaque;
+    pub const CFAllocatorRetainCallBack = fn (?*anyopaque) callconv(.C) *anyopaque;
+
+    /// Provides the layout of the CFAllocatorContext type.
+    pub const CFAllocatorContext = extern struct {
+        version: CFIndex,
+        info: ?*anyopaque,
+        retain: ?getFunctionPointer(CFAllocatorRetainCallBack),
+        release: ?getFunctionPointer(CFAllocatorReleaseCallBack),
+        copyDescription: ?getFunctionPointer(CFAllocatorCopyDescriptionCallBack),
+        allocate: getFunctionPointer(CFAllocatorAllocateCallBack),
+        reallocate: getFunctionPointer(CFAllocatorReallocateCallBack),
+        deallocate: ?getFunctionPointer(CFAllocatorDeallocateCallback),
+        preferredSize: ?getFunctionPointer(CFAllocatorPreferredSizeCallBack),
+    };
+};
 
 /// Wraps CFDataRef type.
 pub const CFData = opaque {
@@ -26,6 +168,15 @@ pub const CFData = opaque {
     extern "c" fn CFDataCreate(allocator: ?*anyopaque, bytes: [*]const u8, length: usize) *CFData;
     extern "c" fn CFDataGetBytePtr(*CFData) *const u8;
     extern "c" fn CFDataGetLength(*CFData) i32;
+};
+
+/// Wraps CFDateRef type.
+pub const CFDate = opaque {
+    extern "C" fn CFDateCompare(the_date: *CFDate, other_date: *CFDate, context: ?*anyopaque) CFComparisonResult;
+    extern "C" fn CFDateCreate(allocator: ?*CFAllocator, at: CFAbsoluteTime) ?*CFDate;
+    extern "C" fn CFDateGetAbsoluteTime(the_date: *CFDate) CFAbsoluteTime;
+    extern "C" fn CFDateGetTimeIntervalSinceDate(the_date: *CFDate, other_date: *CFDate) CFTimeInterval;
+    extern "C" fn CFDateGetTypeID() CFTypeID;
 };
 
 /// Wraps CFStringRef type.
@@ -75,6 +226,10 @@ pub extern "c" fn CFRelease(*anyopaque) void;
 
 test {
     _ = testing.refAllDecls(@This());
+    _ = testing.refAllDecls(ZigAllocatorCallbacks);
+    _ = testing.refAllDecls(CFAllocator);
+    _ = testing.refAllDecls(CFAllocator.CFAllocatorContext);
     _ = testing.refAllDecls(CFData);
+    _ = testing.refAllDecls(CFDate);
     _ = testing.refAllDecls(CFString);
 }
