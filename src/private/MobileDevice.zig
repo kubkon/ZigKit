@@ -19,7 +19,7 @@ pub const AMDeviceNotificationCallbackInfo = extern struct {
     msg: u32,
 };
 
-const AMDevice = extern struct {
+pub const AMDevice = extern struct {
     _0: [16]u8,
     device_id: u32,
     product_id: u32,
