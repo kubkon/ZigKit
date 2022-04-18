@@ -8,10 +8,11 @@ const CFDictionary = CoreFoundation.CFDictionary;
 const CFString = CoreFoundation.CFString;
 const CFUrl = CoreFoundation.CFUrl;
 
-pub const ADNCI = enum(u8) {
+pub const ADNCI_MSG = enum(u8) {
     CONNECTED = 1,
     DISCONNECTED = 2,
     UNKNOWN = 3,
+    _,
 };
 
 pub const AMDeviceNotificationCallbackInfo = extern struct {
