@@ -157,32 +157,66 @@ pub const CFAllocator = opaque {
 
 /// Wraps the CFArrayRef type
 pub const CFArray = opaque {
-    // An alias to make opaque array value types a bit less confusing.
-    pub const OpaqueArrayValueType = ?*const anyopaque;
-    pub fn create(allocator: ?*CFAllocator, values: []const OpaqueArrayValueType, call_backs: ?*CFArrayCallBacks) !*CFArray {
-        if (CFArrayCreate(allocator, values.ptr, @intCast(CFIndex, values.len), call_backs)) |cfarray| {
-            return cfarray;
-        } else {
-            return error.OutOfMemory;
-        }
+    pub fn create(comptime T: type, values: []*const T) error{OutOfMemory}!*CFArray {
+        return CFArrayCreate(
+            null,
+            @ptrCast([*]*const anyopaque, values),
+            @intCast(CFIndex, values.len),
+            &kCFTypeArrayCallBacks,
+        ) orelse error.OutOfMemory;
     }
 
-    extern "C" fn CFArrayCreate(allocator: ?*CFAllocator, values: [*]const OpaqueArrayValueType, num_values: CFIndex, call_backs: ?*CFArrayCallBacks) ?*CFArray;
+    pub fn createWithAllocator(
+        comptime T: type,
+        allocator: *CFAllocator,
+        values: []*const T,
+        call_backs: ?*CFArrayCallBacks,
+    ) error{OutOfMemory}!*CFArray {
+        return CFArrayCreate(
+            allocator,
+            @ptrCast([*]*const anyopaque, values),
+            @intCast(CFIndex, values.len),
+            call_backs,
+        ) orelse error.OutOfMemory;
+    }
+
+    pub fn release(self: *CFArray) void {
+        CFRelease(self);
+    }
+
+    pub fn count(self: *CFArray) usize {
+        return @intCast(usize, CFArrayGetCount(self));
+    }
+
+    extern "c" var kCFTypeArrayCallBacks: CFArrayCallBacks;
+
+    extern "C" fn CFArrayCreate(
+        allocator: ?*CFAllocator,
+        values: [*]*const anyopaque,
+        num_values: CFIndex,
+        call_backs: ?*CFArrayCallBacks,
+    ) ?*CFArray;
     extern "C" fn CFArrayCreateCopy(allocator: ?*CFAllocator, the_array: *CFArray) ?*CFArray;
 
-    extern "C" fn CFArrayBSearchValues(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType, comparator: ?getFunctionPointer(CFComparatorFunction), context: ?*anyopaque) CFIndex;
-    extern "C" fn CFArrayContainsValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) Boolean;
+    extern "C" fn CFArrayBSearchValues(
+        the_array: *CFArray,
+        range: CFRange,
+        value: *const anyopaque,
+        comparator: ?getFunctionPointer(CFComparatorFunction),
+        context: ?*anyopaque,
+    ) CFIndex;
+    extern "C" fn CFArrayContainsValue(the_array: *CFArray, range: CFRange, value: *const anyopaque) Boolean;
     extern "C" fn CFArrayGetCount(the_array: *CFArray) CFIndex;
-    extern "C" fn CFArrayGetCountOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
-    extern "C" fn CFArrayGetFirstIndexOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
-    extern "C" fn CFArrayGetLastIndexOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
-    extern "C" fn CFArrayGetValues(the_array: *CFArray, range: CFRange, values: [*]OpaqueArrayValueType) void;
-    extern "C" fn CFArrayGetValueAtIndex(the_array: *CFArray, index: CFIndex) OpaqueArrayValueType;
+    extern "C" fn CFArrayGetCountOfValue(the_array: *CFArray, range: CFRange, value: *const anyopaque) CFIndex;
+    extern "C" fn CFArrayGetFirstIndexOfValue(the_array: *CFArray, range: CFRange, value: *const anyopaque) CFIndex;
+    extern "C" fn CFArrayGetLastIndexOfValue(the_array: *CFArray, range: CFRange, value: *const anyopaque) CFIndex;
+    extern "C" fn CFArrayGetValues(the_array: *CFArray, range: CFRange, values: [*]*const anyopaque) void;
+    extern "C" fn CFArrayGetValueAtIndex(the_array: *CFArray, index: CFIndex) *const anyopaque;
 
-    pub const CFArrayRetainCallBack = fn (*CFAllocator, OpaqueArrayValueType) callconv(.C) OpaqueArrayValueType;
-    pub const CFArrayReleaseCallBack = fn (*CFAllocator, OpaqueArrayValueType) callconv(.C) void;
-    pub const CFArrayCopyDescriptionCallBack = fn (OpaqueArrayValueType) callconv(.C) *CFString;
-    pub const CFArrayEqualCallBack = fn (OpaqueArrayValueType, OpaqueArrayValueType) callconv(.C) Boolean;
+    pub const CFArrayRetainCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) *const anyopaque;
+    pub const CFArrayReleaseCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) void;
+    pub const CFArrayCopyDescriptionCallBack = fn (*const anyopaque) callconv(.C) *CFString;
+    pub const CFArrayEqualCallBack = fn (*const anyopaque, *const anyopaque) callconv(.C) Boolean;
 
     pub const CFArrayCallBacks = extern struct {
         version: CFIndex,
@@ -252,6 +286,9 @@ pub const CFString = opaque {
             try buf.resize(buf.items.len + buf_size);
         }
 
+        const len = mem.sliceTo(@ptrCast([*:0]const u8, buf.items.ptr), 0).len;
+        try buf.resize(len);
+
         return buf.toOwnedSlice();
     }
 
@@ -269,7 +306,12 @@ pub const CFString = opaque {
 
 /// Wraps CFDictionaryRef type.
 pub const CFDictionary = opaque {
-    pub fn create(comptime Key: type, comptime Value: type, keys: []*Key, values: []*Value) *CFDictionary {
+    pub fn create(
+        comptime Key: type,
+        comptime Value: type,
+        keys: []*const Key,
+        values: []*const Value,
+    ) error{OutOfMemory}!*CFDictionary {
         assert(keys.len == values.len);
         return CFDictionaryCreate(
             null,
@@ -278,15 +320,15 @@ pub const CFDictionary = opaque {
             keys.len,
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks,
-        );
+        ) orelse error.OutOfMemory;
     }
 
     pub fn release(self: *CFDictionary) void {
         CFRelease(self);
     }
 
-    pub fn getValue(self: *CFDictionary, comptime Key: type, comptime Value: type, key: *Key) ?*Value {
-        const ptr = CFDictionaryGetValue(self, @ptrCast(*anyopaque, key)) orelse return null;
+    pub fn getValue(self: *CFDictionary, comptime Key: type, comptime Value: type, key: *const Key) ?*Value {
+        const ptr = CFDictionaryGetValue(self, @ptrCast(*const anyopaque, key)) orelse return null;
         return @ptrCast(*Value, ptr);
     }
 
@@ -297,8 +339,8 @@ pub const CFDictionary = opaque {
         num_values: usize,
         key_cb: *const anyopaque,
         value_cb: *const anyopaque,
-    ) *CFDictionary;
-    extern "c" fn CFDictionaryGetValue(dict: *CFDictionary, key: *anyopaque) ?*anyopaque;
+    ) ?*CFDictionary;
+    extern "c" fn CFDictionaryGetValue(dict: *CFDictionary, key: *const anyopaque) ?*anyopaque;
 
     extern "c" var kCFTypeDictionaryKeyCallBacks: anyopaque;
     extern "c" var kCFTypeDictionaryValueCallBacks: anyopaque;
@@ -344,7 +386,7 @@ pub const CFUrl = opaque {
         CFRelease(self);
     }
 
-    extern "c" fn CFURLCreateWithFileSystemPath(
+    pub extern "c" fn CFURLCreateWithFileSystemPath(
         ?*anyopaque,
         path: *CFString,
         path_style: PathStyle,

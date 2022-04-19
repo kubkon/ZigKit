@@ -4,6 +4,7 @@ const testing = std.testing;
 
 const Allocator = std.mem.Allocator;
 const CoreFoundation = @import("../CoreFoundation.zig");
+const CFArray = CoreFoundation.CFArray;
 const CFDictionary = CoreFoundation.CFDictionary;
 const CFString = CoreFoundation.CFString;
 const CFUrl = CoreFoundation.CFUrl;
@@ -105,7 +106,7 @@ pub const AMDevice = extern struct {
 
         const keys = &[_]*CFString{CFString.createWithBytes("PackageType")};
         const values = &[_]*CFString{CFString.createWithBytes("Developer")};
-        const opts = CFDictionary.create(CFString, CFString, keys, values);
+        const opts = try CFDictionary.create(CFString, CFString, keys, values);
         defer {
             for (keys) |key| {
                 key.release();
@@ -130,43 +131,46 @@ pub const AMDevice = extern struct {
         try self.secureInstallApplication(url, opts, install_cb);
     }
 
-    // pub fn copyDeviceAppUrl(self: *AMDevice, bundle_id: *CFString) !?*CFUrl {
-    //     var out: *CFDictionary = undefined;
-    //     defer out.release();
+    /// Caller owns the returned memory.
+    pub fn copyDeviceAppUrl(self: *AMDevice, allocator: Allocator, bundle_id: []const u8) !?[]const u8 {
+        try self.connect();
+        defer self.disconnect() catch {};
 
-    //     const value_obj = CFArrayCreate(null, @ptrCast([*]*const anyopaque, &[_]String{
-    //         stringFromBytes("CFBundleIdentifier"),
-    //         stringFromBytes("Path"),
-    //     }), 2, &kCFTypeArrayCallBacks);
-    //     defer value_obj.deinit();
+        assert(self.isPaired());
+        try self.validatePairing();
 
-    //     const values = &[_]ArrayRef{value_obj};
-    //     const keys = &[_]String{stringFromBytes("ReturnAttributes")};
-    //     const opts = CFDictionaryCreate(
-    //         null,
-    //         @ptrCast([*]*const anyopaque, keys),
-    //         @ptrCast([*]*const anyopaque, values),
-    //         1,
-    //         &kCFTypeDictionaryKeyCallBacks,
-    //         &kCFTypeDictionaryValueCallBacks,
-    //     );
-    //     defer opts.release();
+        try self.startSession();
+        defer self.stopSession() catch {};
 
-    //     switch (AMDeviceLookupApplications(self, opts, &out)) {
-    //         0 => {},
-    //         else => |e| {
-    //             log.err("failed to lookup applications on device with error: {d}", .{e});
-    //             return error.LookupApplicationsFailed;
-    //         },
-    //     }
+        var maybe_out: ?*CFDictionary = undefined;
+        defer if (maybe_out) |out| out.release();
 
-    //     const raw_app_info = out.getValue(bundle_id) orelse return null;
-    //     const app_dict = @ptrCast(DictRef, raw_app_info);
-    //     const raw_path = app_dict.getValue(stringFromBytes("Path")).?;
-    //     const path = @ptrCast(String, raw_path);
-    //     const url = CFURLCreateWithFileSystemPath(null, path, .posix, true);
-    //     return url;
-    // }
+        const value_obj = try CFArray.create(CFString, &[_]*CFString{
+            CFString.createWithBytes("CFBundleIdentifier"),
+            CFString.createWithBytes("Path"),
+        });
+        defer value_obj.release();
+
+        const values = &[_]*CFArray{value_obj};
+        const keys = &[_]*CFString{CFString.createWithBytes("ReturnAttributes")};
+        const opts = try CFDictionary.create(CFString, CFArray, keys, values);
+        defer opts.release();
+
+        if (AMDeviceLookupApplications(self, opts, &maybe_out) != 0) {
+            return error.Failed;
+        }
+        const out = maybe_out orelse return error.Failed;
+
+        const bid = CFString.createWithBytes(bundle_id);
+        defer bid.release();
+        const raw_app_info = out.getValue(CFString, CFDictionary, bid) orelse return null;
+        const app_dict = @ptrCast(*CFDictionary, raw_app_info);
+        const raw_path = app_dict.getValue(CFString, CFString, CFString.createWithBytes("Path")).?;
+        const path = @ptrCast(*CFString, raw_path);
+        const url = CFUrl.CFURLCreateWithFileSystemPath(null, path, .posix, true);
+        defer url.release();
+        return try url.copyPath(allocator);
+    }
 
     pub const Callback = fn (*CFDictionary, c_int) callconv(.C) c_int;
 
@@ -198,7 +202,7 @@ pub const AMDevice = extern struct {
     extern "c" fn AMDeviceLookupApplications(
         device: *AMDevice,
         opts: *CFDictionary,
-        out: **CFDictionary,
+        out: *?*CFDictionary,
     ) c_int;
 };
 
