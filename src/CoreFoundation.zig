@@ -19,11 +19,19 @@ pub const CFOptionFlags = c_long;
 pub const CFTypeID = c_ulong;
 pub const CFTimeInterval = f64; // c_double
 pub const CFAbsoluteTime = CFTimeInterval;
+pub const Boolean = bool;
 pub const CFComparisonResult = enum(CFIndex) {
     kCFCompareLessThan = -1,
     kCFCompareEqualTo = 0,
     kCFCompareGreaterThan = 1,
 };
+
+pub const CFRange = extern struct {
+    location: CFIndex,
+    length: CFIndex,
+};
+
+pub const CFComparatorFunction = fn (*const anyopaque, *const anyopaque, *anyopaque) callconv(.C) CFComparisonResult;
 
 // A struct to help manage how the allocator callbacks wrap a zig allocator.
 // Also used as the underlying type pointed to by the context struct we initialise
@@ -146,6 +154,44 @@ pub const CFAllocator = opaque {
     };
 };
 
+/// Wraps the CFArrayRef type
+pub const CFArray = opaque {
+    // An alias to make opaque array value types a bit less confusing.
+    pub const OpaqueArrayValueType = ?*const anyopaque;
+    pub fn create(allocator: ?*CFAllocator, values: []const OpaqueArrayValueType, call_backs: ?*CFArrayCallBacks) !*CFArray {
+        if (CFArrayCreate(allocator, values.ptr, @intCast(CFIndex, values.len), call_backs)) |cfarray| {
+            return cfarray;
+        } else {
+            return error.OutOfMemory;
+        }
+    }
+
+    extern "C" fn CFArrayCreate(allocator: ?*CFAllocator, values: [*]const OpaqueArrayValueType, num_values: CFIndex, call_backs: ?*CFArrayCallBacks) ?*CFArray;
+    extern "C" fn CFArrayCreateCopy(allocator: ?*CFAllocator, the_array: *CFArray) ?*CFArray;
+
+    extern "C" fn CFArrayBSearchValues(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType, comparator: ?getFunctionPointer(CFComparatorFunction), context: ?*anyopaque) CFIndex;
+    extern "C" fn CFArrayContainsValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) Boolean;
+    extern "C" fn CFArrayGetCount(the_array: *CFArray) CFIndex;
+    extern "C" fn CFArrayGetCountOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
+    extern "C" fn CFArrayGetFirstIndexOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
+    extern "C" fn CFArrayGetLastIndexOfValue(the_array: *CFArray, range: CFRange, value: OpaqueArrayValueType) CFIndex;
+    extern "C" fn CFArrayGetValues(the_array: *CFArray, range: CFRange, values: [*]OpaqueArrayValueType) void;
+    extern "C" fn CFArrayGetValueAtIndex(the_array: *CFArray, index: CFIndex) OpaqueArrayValueType;
+
+    pub const CFArrayRetainCallBack = fn (*CFAllocator, OpaqueArrayValueType) callconv(.C) OpaqueArrayValueType;
+    pub const CFArrayReleaseCallBack = fn (*CFAllocator, OpaqueArrayValueType) callconv(.C) void;
+    pub const CFArrayCopyDescriptionCallBack = fn (OpaqueArrayValueType) callconv(.C) *CFString;
+    pub const CFArrayEqualCallBack = fn (OpaqueArrayValueType, OpaqueArrayValueType) callconv(.C) Boolean;
+
+    pub const CFArrayCallBacks = extern struct {
+        version: CFIndex,
+        retain: ?getFunctionPointer(CFArrayRetainCallBack),
+        release: ?getFunctionPointer(CFArrayReleaseCallBack),
+        copy_description: ?getFunctionPointer(CFArrayCopyDescriptionCallBack),
+        equal: ?getFunctionPointer(CFArrayEqualCallBack),
+    };
+};
+
 /// Wraps CFDataRef type.
 pub const CFData = opaque {
     pub fn create(bytes: []const u8) *CFData {
@@ -229,6 +275,8 @@ test {
     _ = testing.refAllDecls(ZigAllocatorCallbacks);
     _ = testing.refAllDecls(CFAllocator);
     _ = testing.refAllDecls(CFAllocator.CFAllocatorContext);
+    _ = testing.refAllDecls(CFArray);
+    _ = testing.refAllDecls(CFArray.CFArrayCallBacks);
     _ = testing.refAllDecls(CFData);
     _ = testing.refAllDecls(CFDate);
     _ = testing.refAllDecls(CFString);
