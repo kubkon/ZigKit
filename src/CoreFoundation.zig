@@ -281,21 +281,3 @@ test {
     _ = testing.refAllDecls(CFDate);
     _ = testing.refAllDecls(CFString);
 }
-
-test "Basic Array Tests" {
-    const allocator = testing.allocator;
-    const cfallocator = try CFAllocator.createFromZigAllocator(&allocator, CFAllocator.kCFAllocatorUseContext);
-    defer CFRelease(cfallocator);
-
-    const array = try CFArray.create(cfallocator, &[_]CFArray.OpaqueArrayValueType{ null, @intToPtr(CFArray.OpaqueArrayValueType, 2), null }, null);
-    defer CFRelease(array);
-
-    try testing.expectEqual(array.CFArrayGetCount(), 3);
-    try testing.expectEqual(array.CFArrayGetCountOfValue(.{ .location = 0, .length = 3 }, null), 2);
-    try testing.expectEqual(array.CFArrayGetValueAtIndex(0), null);
-    try testing.expectEqual(array.CFArrayGetValueAtIndex(1), @intToPtr(CFArray.OpaqueArrayValueType, 2));
-    try testing.expectEqual(array.CFArrayGetValueAtIndex(2), null);
-    try testing.expectEqual(array.CFArrayGetFirstIndexOfValue(.{ .location = 0, .length = 3 }, null), 0);
-    try testing.expectEqual(array.CFArrayGetLastIndexOfValue(.{ .location = 0, .length = 3 }, null), 2);
-    try testing.expectEqual(array.CFArrayGetFirstIndexOfValue(.{ .location = 0, .length = 3 }, @intToPtr(CFArray.OpaqueArrayValueType, 1)), -1);
-}
