@@ -43,7 +43,7 @@ const ZigAllocatorCallbacks = struct {
     pub fn allocateCallback(alloc_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.C) ?*anyopaque {
         _ = hint; // hint is always unused
         const allocator = opaqueInfoToAllocator(opaque_info);
-        const actual_alloc_size = @sizeOf(usize) + @intCast(usize, alloc_size);
+        const actual_alloc_size = @sizeOf(usize) + @as(usize, @intCast(alloc_size));
         const bytes = allocator.alignedAlloc(u8, @alignOf(usize), actual_alloc_size) catch {
             return null;
         };
@@ -58,7 +58,7 @@ const ZigAllocatorCallbacks = struct {
     pub fn reallocateCallback(old_data: *anyopaque, new_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.C) ?*anyopaque {
         _ = hint; // hint is always unused
         const allocator = opaqueInfoToAllocator(opaque_info);
-        const actual_new_size = @sizeOf(usize) + @intCast(usize, new_size);
+        const actual_new_size = @sizeOf(usize) + @as(usize, @intCast(new_size));
         const new_data = allocator.realloc(dataToRootSlice(old_data), actual_new_size) catch {
             return null;
         };
@@ -66,24 +66,23 @@ const ZigAllocatorCallbacks = struct {
     }
 
     fn opaqueInfoToAllocator(opaque_info: ?*anyopaque) *const Allocator {
-        return @ptrCast(*const Allocator, @alignCast(@alignOf(Allocator), opaque_info.?));
+        return @as(*const Allocator, @ptrCast(@alignCast(opaque_info.?)));
     }
 
     fn dataToRootSlice(data: *anyopaque) []u8 {
-        const data_root = @ptrCast([*]u8, data) - @sizeOf(usize);
+        const data_root = @as([*]u8, @ptrCast(data)) - @sizeOf(usize);
         const length = mem.bytesToValue(usize, data_root[0..@sizeOf(usize)]);
         return data_root[0..length];
     }
 
     fn rootSliceToData(root_slice: []u8) *anyopaque {
         mem.bytesAsValue(usize, root_slice[0..@sizeOf(usize)]).* = root_slice.len;
-        return @ptrCast(*anyopaque, root_slice[@sizeOf(usize)..]);
+        return @as(*anyopaque, @ptrCast(root_slice[@sizeOf(usize)..]));
     }
 };
 
 /// Wraps the CFAllocatorRef type.
 pub const CFAllocator = opaque {
-
     /// Construct a CFAllocator from a zig allocator, the second allocator argument can optionally be
     /// if you want to allocator the data used to manager the allocator itself using a different
     /// allocator.
@@ -95,7 +94,7 @@ pub const CFAllocator = opaque {
     pub fn createFromZigAllocator(allocator: *const Allocator, allocator_allocator: ?*CFAllocator) !*CFAllocator {
         var allocator_context = CFAllocatorContext{
             .version = 0, // the ony valid value
-            .info = @intToPtr(*anyopaque, @ptrToInt(allocator)),
+            .info = @as(*anyopaque, @ptrFromInt(@intFromPtr(allocator))),
             .allocate = ZigAllocatorCallbacks.allocateCallback,
             .deallocate = ZigAllocatorCallbacks.deallocateCallback,
             .reallocate = ZigAllocatorCallbacks.reallocateCallback,
@@ -160,8 +159,8 @@ pub const CFArray = opaque {
     pub fn create(comptime T: type, values: []*const T) error{OutOfMemory}!*CFArray {
         return CFArrayCreate(
             null,
-            @ptrCast([*]*const anyopaque, values),
-            @intCast(CFIndex, values.len),
+            @as([*]*const anyopaque, @ptrCast(values)),
+            @as(CFIndex, @intCast(values.len)),
             &kCFTypeArrayCallBacks,
         ) orelse error.OutOfMemory;
     }
@@ -174,8 +173,8 @@ pub const CFArray = opaque {
     ) error{OutOfMemory}!*CFArray {
         return CFArrayCreate(
             allocator,
-            @ptrCast([*]*const anyopaque, values),
-            @intCast(CFIndex, values.len),
+            @as([*]*const anyopaque, @ptrCast(values)),
+            @as(CFIndex, @intCast(values.len)),
             call_backs,
         ) orelse error.OutOfMemory;
     }
@@ -185,7 +184,7 @@ pub const CFArray = opaque {
     }
 
     pub fn count(self: *CFArray) usize {
-        return @intCast(usize, CFArrayGetCount(self));
+        return @as(usize, @intCast(CFArrayGetCount(self)));
     }
 
     extern "c" var kCFTypeArrayCallBacks: CFArrayCallBacks;
@@ -238,12 +237,12 @@ pub const CFData = opaque {
     }
 
     pub fn len(self: *CFData) usize {
-        return @intCast(usize, CFDataGetLength(self));
+        return @as(usize, @intCast(CFDataGetLength(self)));
     }
 
     pub fn asSlice(self: *CFData) []const u8 {
         const ptr = CFDataGetBytePtr(self);
-        return @ptrCast([*]const u8, ptr)[0..self.len()];
+        return @as([*]const u8, @ptrCast(ptr))[0..self.len()];
     }
 
     extern "c" fn CFDataCreate(allocator: ?*anyopaque, bytes: [*]const u8, length: usize) *CFData;
@@ -273,7 +272,7 @@ pub const CFString = opaque {
     /// Caller owns the memory.
     pub fn cstr(self: *CFString, allocator: Allocator) error{OutOfMemory}![]u8 {
         if (CFStringGetCStringPtr(self, UTF8_ENCODING)) |ptr| {
-            const c_str = mem.sliceTo(@ptrCast([*:0]const u8, ptr), 0);
+            const c_str = mem.sliceTo(@as([*:0]const u8, @ptrCast(ptr)), 0);
             return allocator.dupe(u8, c_str);
         }
 
@@ -286,7 +285,7 @@ pub const CFString = opaque {
             try buf.resize(buf.items.len + buf_size);
         }
 
-        const len = mem.sliceTo(@ptrCast([*:0]const u8, buf.items.ptr), 0).len;
+        const len = mem.sliceTo(@as([*:0]const u8, @ptrCast(buf.items.ptr)), 0).len;
         try buf.resize(len);
 
         return buf.toOwnedSlice();
@@ -315,8 +314,8 @@ pub const CFDictionary = opaque {
         assert(keys.len == values.len);
         return CFDictionaryCreate(
             null,
-            @ptrCast([*]*const anyopaque, keys),
-            @ptrCast([*]*const anyopaque, values),
+            @as([*]*const anyopaque, @ptrCast(keys)),
+            @as([*]*const anyopaque, @ptrCast(values)),
             keys.len,
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks,
@@ -328,8 +327,8 @@ pub const CFDictionary = opaque {
     }
 
     pub fn getValue(self: *CFDictionary, comptime Key: type, comptime Value: type, key: *const Key) ?*Value {
-        const ptr = CFDictionaryGetValue(self, @ptrCast(*const anyopaque, key)) orelse return null;
-        return @ptrCast(*Value, ptr);
+        const ptr = CFDictionaryGetValue(self, @as(*const anyopaque, @ptrCast(key))) orelse return null;
+        return @as(*Value, @ptrCast(ptr));
     }
 
     extern "c" fn CFDictionaryCreate(

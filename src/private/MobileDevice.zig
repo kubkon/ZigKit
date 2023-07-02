@@ -60,7 +60,7 @@ pub const AMDevice = extern struct {
     }
 
     pub fn getInterfaceType(self: *AMDevice) IntefaceType {
-        return @intToEnum(IntefaceType, AMDeviceGetInterfaceType(self));
+        return @as(IntefaceType, @enumFromInt(AMDeviceGetInterfaceType(self)));
     }
 
     pub fn secureTransferPath(self: *AMDevice, url: *CFUrl, opts: *CFDictionary, cb: Callback) !void {
@@ -164,9 +164,9 @@ pub const AMDevice = extern struct {
         const bid = CFString.createWithBytes(bundle_id);
         defer bid.release();
         const raw_app_info = out.getValue(CFString, CFDictionary, bid) orelse return null;
-        const app_dict = @ptrCast(*CFDictionary, raw_app_info);
+        const app_dict = @as(*CFDictionary, @ptrCast(raw_app_info));
         const raw_path = app_dict.getValue(CFString, CFString, CFString.createWithBytes("Path")).?;
-        const path = @ptrCast(*CFString, raw_path);
+        const path = @as(*CFString, @ptrCast(raw_path));
         const url = CFUrl.CFURLCreateWithFileSystemPath(null, path, .posix, true);
         defer url.release();
         return try url.copyPath(allocator);
