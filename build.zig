@@ -23,7 +23,7 @@ pub fn build(b: *std.build.Builder) void {
     });
     main_tests.linkFramework("CoreFoundation");
     main_tests.linkFramework("Security");
-    main_tests.addFrameworkPath("/System/Library/Frameworks");
+    main_tests.addFrameworkPath(.{ .path = "/System/Library/Frameworks" });
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&b.addRunArtifact(main_tests).step);
