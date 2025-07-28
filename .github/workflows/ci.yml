@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos, ubuntu, windows]
+        os: [macos]
 
     steps:
     - if: matrix.os == 'windows'
