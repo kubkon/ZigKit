@@ -172,7 +172,7 @@ pub const AMDevice = extern struct {
         return try url.copyPath(allocator);
     }
 
-    pub const Callback = fn (*CFDictionary, c_int) callconv(.C) c_int;
+    pub const Callback = fn (*CFDictionary, c_int) callconv(.c) c_int;
 
     extern "c" fn AMDeviceRelease(device: *AMDevice) void;
     extern "c" fn AMDeviceConnect(device: *AMDevice) c_int;
@@ -224,7 +224,7 @@ pub const AMDeviceNotification = extern struct {
 pub const AMDeviceNotificationCallback = fn (
     *AMDeviceNotificationCallbackInfo,
     ?*anyopaque,
-) callconv(.C) void;
+) callconv(.c) void;
 
 pub fn subscribe(cb: AMDeviceNotificationCallback, opts: *CFDictionary) !*AMDeviceNotification {
     var notify: *AMDeviceNotification = undefined;

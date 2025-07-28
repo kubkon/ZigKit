@@ -32,7 +32,7 @@ pub const CFRange = extern struct {
     length: CFIndex,
 };
 
-pub const CFComparatorFunction = fn (*const anyopaque, *const anyopaque, *anyopaque) callconv(.C) CFComparisonResult;
+pub const CFComparatorFunction = fn (*const anyopaque, *const anyopaque, *anyopaque) callconv(.c) CFComparisonResult;
 
 // A struct to help manage how the allocator callbacks wrap a zig allocator.
 // Also used as the underlying type pointed to by the context struct we initialise
@@ -40,22 +40,22 @@ pub const CFComparatorFunction = fn (*const anyopaque, *const anyopaque, *anyopa
 // Because zig allocators work with slices - we have to allocate a little bit of
 // extra memory than we normally would to recreate slice lengths.
 const ZigAllocatorCallbacks = struct {
-    pub fn allocateCallback(alloc_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.C) ?*anyopaque {
+    pub fn allocateCallback(alloc_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.c) ?*anyopaque {
         _ = hint; // hint is always unused
         const allocator = opaqueInfoToAllocator(opaque_info);
         const actual_alloc_size = @sizeOf(usize) + @as(usize, @intCast(alloc_size));
-        const bytes = allocator.alignedAlloc(u8, @alignOf(usize), actual_alloc_size) catch {
+        const bytes = allocator.alignedAlloc(u8, @enumFromInt(@alignOf(usize)), actual_alloc_size) catch {
             return null;
         };
         return rootSliceToData(bytes);
     }
 
-    pub fn deallocateCallback(data: *anyopaque, opaque_info: ?*anyopaque) callconv(.C) void {
+    pub fn deallocateCallback(data: *anyopaque, opaque_info: ?*anyopaque) callconv(.c) void {
         const allocator = opaqueInfoToAllocator(opaque_info);
         allocator.free(dataToRootSlice(data));
     }
 
-    pub fn reallocateCallback(old_data: *anyopaque, new_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.C) ?*anyopaque {
+    pub fn reallocateCallback(old_data: *anyopaque, new_size: CFIndex, hint: CFOptionFlags, opaque_info: ?*anyopaque) callconv(.c) ?*anyopaque {
         _ = hint; // hint is always unused
         const allocator = opaqueInfoToAllocator(opaque_info);
         const actual_new_size = @sizeOf(usize) + @as(usize, @intCast(new_size));
@@ -132,13 +132,13 @@ pub const CFAllocator = opaque {
 
     extern "C" fn CFAllocatorGetTypeID() CFTypeID;
 
-    pub const CFAllocatorAllocateCallBack = fn (CFIndex, CFOptionFlags, ?*anyopaque) callconv(.C) ?*anyopaque;
-    pub const CFAllocatorCopyDescriptionCallBack = fn (?*anyopaque) callconv(.C) *CFString;
-    pub const CFAllocatorDeallocateCallback = fn (*anyopaque, ?*anyopaque) callconv(.C) void;
-    pub const CFAllocatorPreferredSizeCallBack = fn (CFIndex, CFOptionFlags, ?*anyopaque) callconv(.C) CFIndex;
-    pub const CFAllocatorReallocateCallBack = fn (*anyopaque, CFIndex, CFOptionFlags, ?*anyopaque) callconv(.C) ?*anyopaque;
-    pub const CFAllocatorReleaseCallBack = fn (?*anyopaque) callconv(.C) *anyopaque;
-    pub const CFAllocatorRetainCallBack = fn (?*anyopaque) callconv(.C) *anyopaque;
+    pub const CFAllocatorAllocateCallBack = fn (CFIndex, CFOptionFlags, ?*anyopaque) callconv(.c) ?*anyopaque;
+    pub const CFAllocatorCopyDescriptionCallBack = fn (?*anyopaque) callconv(.c) *CFString;
+    pub const CFAllocatorDeallocateCallback = fn (*anyopaque, ?*anyopaque) callconv(.c) void;
+    pub const CFAllocatorPreferredSizeCallBack = fn (CFIndex, CFOptionFlags, ?*anyopaque) callconv(.c) CFIndex;
+    pub const CFAllocatorReallocateCallBack = fn (*anyopaque, CFIndex, CFOptionFlags, ?*anyopaque) callconv(.c) ?*anyopaque;
+    pub const CFAllocatorReleaseCallBack = fn (?*anyopaque) callconv(.c) *anyopaque;
+    pub const CFAllocatorRetainCallBack = fn (?*anyopaque) callconv(.c) *anyopaque;
 
     /// Provides the layout of the CFAllocatorContext type.
     pub const CFAllocatorContext = extern struct {
@@ -212,10 +212,10 @@ pub const CFArray = opaque {
     extern "C" fn CFArrayGetValues(the_array: *CFArray, range: CFRange, values: [*]*const anyopaque) void;
     extern "C" fn CFArrayGetValueAtIndex(the_array: *CFArray, index: CFIndex) *const anyopaque;
 
-    pub const CFArrayRetainCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) *const anyopaque;
-    pub const CFArrayReleaseCallBack = fn (*CFAllocator, *const anyopaque) callconv(.C) void;
-    pub const CFArrayCopyDescriptionCallBack = fn (*const anyopaque) callconv(.C) *CFString;
-    pub const CFArrayEqualCallBack = fn (*const anyopaque, *const anyopaque) callconv(.C) Boolean;
+    pub const CFArrayRetainCallBack = fn (*CFAllocator, *const anyopaque) callconv(.c) *const anyopaque;
+    pub const CFArrayReleaseCallBack = fn (*CFAllocator, *const anyopaque) callconv(.c) void;
+    pub const CFArrayCopyDescriptionCallBack = fn (*const anyopaque) callconv(.c) *CFString;
+    pub const CFArrayEqualCallBack = fn (*const anyopaque, *const anyopaque) callconv(.c) Boolean;
 
     pub const CFArrayCallBacks = extern struct {
         version: CFIndex,
