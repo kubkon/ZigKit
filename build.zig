@@ -4,24 +4,21 @@ pub fn build(b: *std.Build) void {
     const mode = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const lib = b.addStaticLibrary(.{
-        .name = "ZigKit",
+    const main = b.addModule("ZigKit", .{
         .root_source_file = b.path("src/main.zig"),
         .optimize = mode,
         .target = target,
     });
+
+    const lib = b.addLibrary(.{
+        .name = "ZigKit",
+        .linkage = .static,
+        .root_module = main,
+    });
     b.installArtifact(lib);
 
-    _ = b.addModule("ZigKit", .{
-        .root_source_file = b.path("src/main.zig"),
-    });
-
-    if (std.zig.system.darwin.getSdk(b.allocator, target.result)) |sdk| {
-        const main_tests = b.addTest(.{
-            .root_source_file = b.path("src/main.zig"),
-            .optimize = mode,
-            .target = target,
-        });
+    if (std.zig.system.darwin.getSdk(b.allocator, &target.result)) |sdk| {
+        const main_tests = b.addTest(.{ .root_module = main });
         main_tests.linkFramework("CoreFoundation");
         main_tests.linkFramework("Security");
         main_tests.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sdk, "/System/Library/Frameworks" }) });
